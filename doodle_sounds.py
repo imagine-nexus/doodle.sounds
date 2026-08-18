@@ -16,7 +16,7 @@ from scipy.io import wavfile
 __version__ = "1.0.0"
 APP_NAME = "Doodle Sounds"
 # Replace YOUR_USERNAME with your actual GitHub username
-UPDATE_URL = "https://raw.githubusercontent.com/imagine-nexus/doodle.sounds/main/doodle_sounds.py"
+UPDATE_URL = "https://raw.githubusercontent.com/imagine-nexus/doodle.sounds/refs/heads/main/doodle_sounds.py"
 
 # Configure Professional Logging
 logging.basicConfig(
