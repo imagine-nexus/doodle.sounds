@@ -13,9 +13,9 @@ from scipy.io import wavfile
 # ==========================================
 # Application Configuration
 # ==========================================
-__version__ = "1.0.0"
-APP_NAME = "Doodle Sounds"
-# Replace YOUR_USERNAME with your actual GitHub username
+__version__ = "1.0.1"
+APP_NAME = "Doodle Sounds Pro"
+# Your active GitHub Raw URL
 UPDATE_URL = "https://raw.githubusercontent.com/imagine-nexus/doodle.sounds/refs/heads/main/doodle_sounds.py"
 
 # Configure Professional Logging
@@ -29,9 +29,10 @@ logger = logging.getLogger(APP_NAME)
 # ==========================================
 # Auto-Update Mechanism
 # ==========================================
-def check_for_updates() -> None:
-    """Checks the remote URL for a newer version and self-updates if available."""
-    logger.info(f"Checking for updates for {APP_NAME} (Current version: {__version__})...")
+def check_for_updates(silent: bool = False) -> None:
+    """Checks the remote URL for a newer version, self-updates, and auto-restarts."""
+    if not silent:
+        logger.info(f"Checking for updates for {APP_NAME} (Current version: {__version__})...")
     
     try:
         req = urllib.request.Request(UPDATE_URL, headers={'User-Agent': 'Mozilla/5.0'})
@@ -41,7 +42,8 @@ def check_for_updates() -> None:
         version_match = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', remote_code)
         
         if not version_match:
-            logger.warning("Could not determine the remote version. Update aborted.")
+            if not silent: 
+                logger.warning("Could not determine the remote version. Update aborted.")
             return
 
         remote_version = version_match.group(1)
@@ -50,17 +52,25 @@ def check_for_updates() -> None:
         remote_v = tuple(map(int, remote_version.split('.')))
 
         if remote_v > current_v:
-            logger.info(f"New version found: {remote_version}. Downloading update...")
+            logger.info(f"New version found: v{remote_version}. Downloading silently...")
+            
+            # Safely overwrite the current script file
             current_file_path = os.path.abspath(__file__)
             with open(current_file_path, 'w', encoding='utf-8') as f:
                 f.write(remote_code)
-            logger.info("Update successful! Please restart the program.")
-            sys.exit(0)
+                
+            logger.info("Update installed! Auto-restarting the engine to continue processing...")
+            
+            # Tell the OS to restart this script with the exact same arguments
+            os.execv(sys.executable, ['python', current_file_path] + sys.argv[1:])
+            
         else:
-            logger.info("You are running the latest version.")
+            if not silent:
+                logger.info("You are running the latest version.")
             
     except Exception as e:
-        logger.error(f"Failed to check for updates: {e}")
+        if not silent:
+            logger.error(f"Failed to check for updates: {e}")
 
 # ==========================================
 # Core DSP Engine
@@ -73,7 +83,10 @@ class DoodleSoundsEngine:
     def apply_crossfeed(self, left_channel: np.ndarray, right_channel: np.ndarray, 
                         delay_ms: float = 0.3, cutoff_hz: float = 700.0, mix_level: float = -6.0) -> Tuple[np.ndarray, np.ndarray]:
         """Simulates acoustic cross-bleed between ears."""
-        logger.info("Applying Acoustic Crossfeed...")
+        if logger.level <= logging.INFO and not hasattr(self, '_crossfeed_logged'):
+            logger.info("Applying Acoustic Crossfeed...")
+            self._crossfeed_logged = True
+            
         delay_samples = int((delay_ms / 1000.0) * self.sr)
         gain = 10 ** (mix_level / 20.0)
         
@@ -165,14 +178,19 @@ def main():
     parser.add_argument("-o", "--output", type=str, help="Path for output .wav file")
     parser.add_argument("-m", "--mode", type=str, choices=['headphone', '5.1', '7.1'], default='headphone', 
                         help="Target output format (default: headphone)")
-    parser.add_argument("--update", action="store_true", help="Check for script updates and exit")
+    parser.add_argument("--update", action="store_true", help="Force a manual update check and exit")
     
     args = parser.parse_args()
 
+    # 1. Handle Explicit Manual Update Request
     if args.update:
-        check_for_updates()
-        return
+        check_for_updates(silent=False)
+        sys.exit(0)
 
+    # 2. AUTOMATIC BACKGROUND UPDATE CHECK ON LAUNCH
+    check_for_updates(silent=True)
+
+    # 3. Audio Loading and Setup
     sr = 44100
     file_name = args.input or "test_audio.wav"
     
@@ -195,6 +213,7 @@ def main():
         left_ch, right_ch = audio_data[:, 0], audio_data[:, 1]
         wavfile.write("doodle_original_test.wav", sr, audio_data)
 
+    # 4. Processing Pipeline
     engine = DoodleSoundsEngine(sample_rate=sr)
     logger.info(f"--- Starting Processing Pipeline for {args.mode.upper()} ---")
     
@@ -208,6 +227,7 @@ def main():
 
     processed_audio = engine.cinematic_soft_clipper(processed_audio, drive=1.4)
     
+    # 5. Final Export
     logger.info("Normalizing final audio...")
     max_val = np.max(np.abs(processed_audio))
     if max_val > 0:
